@@ -2,29 +2,31 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from config import DB_CONFIG
 from models import Category
+import time
 
 class Database:
     def __init__(self):
         self.connection = None
+        self.max_retries = 3
+        self.retry_delay = 2
         self.connect()
         self.init_db()
 
     def connect(self):
-        try:
-            # Добавляем SSL параметры если они есть в конфиге
-            connection_params = DB_CONFIG.copy()
-            if 'sslmode' in connection_params:
-                # Для Aiven обычно требуется SSL
-                connection_params['sslmode'] = 'require'
-                connection_params['sslrootcert'] = 'path/to/ca.crt'  # если нужно
-            
-            self.connection = psycopg2.connect(**connection_params)
-            print("Connected to PostgreSQL database successfully!")
-            print(f"Database: {DB_CONFIG.get('dbname')}")
-            print(f"Host: {DB_CONFIG.get('host')}")
-        except Exception as e:
-            print(f"Error connecting to database: {e}")
-            print("Connection parameters:", {k: v for k, v in DB_CONFIG.items() if k != 'password'})
+        for attempt in range(self.max_retries):
+            try:
+                self.connection = psycopg2.connect(**DB_CONFIG)
+                print("Connected to PostgreSQL database successfully!")
+                print(f"Database: {DB_CONFIG.get('dbname')}")
+                print(f"Host: {DB_CONFIG.get('host')}")
+                return
+            except Exception as e:
+                print(f"Error connecting to database (attempt {attempt + 1}/{self.max_retries}): {e}")
+                if attempt < self.max_retries - 1:
+                    time.sleep(self.retry_delay)
+                else:
+                    print("Failed to connect to PostgreSQL after multiple attempts")
+                    raise e
 
     def init_db(self):
         try:
@@ -59,7 +61,6 @@ class Database:
         except Exception as e:
             print(f"Error initializing database: {e}")
 
-    # Остальные методы остаются без изменений...
     def add_user(self, telegram_id: int, username: str, first_name: str, last_name: str = None):
         try:
             with self.connection.cursor() as cursor:
@@ -76,6 +77,7 @@ class Database:
     def add_expense(self, telegram_id: int, amount: float, category: Category, description: str, comment: str = None):
         try:
             with self.connection.cursor() as cursor:
+                # Получаем user_id
                 cursor.execute("SELECT id FROM users WHERE telegram_id = %s", (telegram_id,))
                 user = cursor.fetchone()
                 
@@ -92,27 +94,8 @@ class Database:
             print(f"Error adding expense: {e}")
             return False
 
-    def get_weekly_expenses(self):
-        try:
-            with self.connection.cursor(cursor_factory=RealDictCursor) as cursor:
-                cursor.execute("""
-                    SELECT 
-                        u.first_name,
-                        e.category,
-                        SUM(e.amount) as total_amount,
-                        COUNT(e.id) as expense_count
-                    FROM expenses e
-                    JOIN users u ON e.user_id = u.id
-                    WHERE e.created_at >= DATE_TRUNC('week', CURRENT_DATE)
-                    GROUP BY u.first_name, e.category
-                    ORDER BY u.first_name, total_amount DESC
-                """)
-                return cursor.fetchall()
-        except Exception as e:
-            print(f"Error getting weekly expenses: {e}")
-            return []
-
-    def get_user_expenses_by_category(self, telegram_id: int):
+    def get_user_expenses_by_category_weekly(self, telegram_id: int):
+        """Получает расходы пользователя по категориям за текущую неделю (PostgreSQL)"""
         try:
             with self.connection.cursor(cursor_factory=RealDictCursor) as cursor:
                 cursor.execute("""
@@ -129,9 +112,31 @@ class Database:
                 """, (telegram_id,))
                 return cursor.fetchall()
         except Exception as e:
-            print(f"Error getting user expenses: {e}")
+            print(f"Error getting user weekly expenses: {e}")
             return []
-    def get_general_statistics(self):
+
+    def get_user_expenses_by_category_all_time(self, telegram_id: int):
+        """Получает расходы пользователя по категориям за всё время"""
+        try:
+            with self.connection.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute("""
+                    SELECT 
+                        e.category,
+                        SUM(e.amount) as total_amount,
+                        COUNT(e.id) as expense_count
+                    FROM expenses e
+                    JOIN users u ON e.user_id = u.id
+                    WHERE u.telegram_id = %s 
+                    GROUP BY e.category
+                    ORDER BY total_amount DESC
+                """, (telegram_id,))
+                return cursor.fetchall()
+        except Exception as e:
+            print(f"Error getting user all-time expenses: {e}")
+            return []
+
+    def get_general_statistics_weekly(self):
+        """Получает общую статистику расходов за текущую неделю (PostgreSQL)"""
         try:
             with self.connection.cursor(cursor_factory=RealDictCursor) as cursor:
                 cursor.execute("""
@@ -148,16 +153,37 @@ class Database:
                 """)
                 return cursor.fetchall()
         except Exception as e:
-            print(f"Error getting general statistics: {e}")
-            return []  
-          
-    def get_all_expenses(self):
-        """Получает все расходы (только основные поля для оптимизации)"""
+            print(f"Error getting general weekly statistics: {e}")
+            return []
+
+    def get_general_statistics_all_time(self):
+        """Получает общую статистику расходов за всё время"""
         try:
             with self.connection.cursor(cursor_factory=RealDictCursor) as cursor:
                 cursor.execute("""
                     SELECT 
                         u.first_name,
+                        e.category,
+                        SUM(e.amount) as total_amount,
+                        COUNT(e.id) as expense_count
+                    FROM expenses e
+                    JOIN users u ON e.user_id = u.id
+                    GROUP BY u.first_name, e.category
+                    ORDER BY u.first_name, total_amount DESC
+                """)
+                return cursor.fetchall()
+        except Exception as e:
+            print(f"Error getting general all-time statistics: {e}")
+            return []
+
+    def get_all_expenses(self):
+        """Получает все расходы со всей информацией"""
+        try:
+            with self.connection.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute("""
+                    SELECT 
+                        u.first_name,
+                        u.username,
                         e.amount,
                         e.category,
                         e.description,
@@ -171,5 +197,27 @@ class Database:
         except Exception as e:
             print(f"Error getting all expenses: {e}")
             return []
+    def get_expenses_by_date(self, telegram_id: int, target_date: str):
+        """Получает расходы пользователя за конкретную дату"""
+        try:
+            with self.connection.cursor(cursor_factory=RealDictCursor) as cursor:
+                cursor.execute("""
+                    SELECT 
+                        e.category,
+                        e.amount,
+                        e.description,
+                        e.comment,
+                        e.created_at
+                    FROM expenses e
+                    JOIN users u ON e.user_id = u.id
+                    WHERE u.telegram_id = %s 
+                    AND DATE(e.created_at) = %s
+                    ORDER BY e.created_at DESC
+                """, (telegram_id, target_date))
+                return cursor.fetchall()
+        except Exception as e:
+            print(f"Error getting expenses by date: {e}")
+            return []
 
+# Глобальный экземпляр базы данных
 db = Database()
