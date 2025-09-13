@@ -4,6 +4,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from datetime import datetime
+import logging
 from config import CATEGORIES
 
 def create_expenses_excel(expenses_data):
@@ -61,7 +62,7 @@ def create_expenses_excel(expenses_data):
     
     # Проверяем размер файла
     file_size = os.path.getsize(temp_file.name)
-    print(f"Excel file size: {file_size} bytes")
+    logging.info(f"Excel file size: {file_size} bytes")
     
     return temp_file.name
 

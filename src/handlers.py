@@ -2,6 +2,7 @@ from aiogram import Router, types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.filters import Command
+import logging
 from aiogram.types import BufferedInputFile, ReplyKeyboardMarkup, KeyboardButton
 import asyncio
 import os
@@ -341,7 +342,7 @@ async def export_to_excel(message: types.Message):
         
     except Exception as e:
         await message.answer("❌ Произошла ошибка при создании отчета")
-        print(f"Error creating Excel report: {e}")
+        logging.error(f"Error creating Excel report: {e}")
         
     finally:
         # Очищаем временный файл

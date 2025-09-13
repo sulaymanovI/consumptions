@@ -3,6 +3,7 @@ from psycopg2.extras import RealDictCursor
 from config import DB_CONFIG
 from models import Category
 import time
+import logging
 
 class Database:
     def __init__(self):
@@ -16,16 +17,16 @@ class Database:
         for attempt in range(self.max_retries):
             try:
                 self.connection = psycopg2.connect(**DB_CONFIG)
-                print("Connected to PostgreSQL database successfully!")
-                print(f"Database: {DB_CONFIG.get('dbname')}")
-                print(f"Host: {DB_CONFIG.get('host')}")
+                logging.info("Connected to PostgreSQL database successfully!")
+                logging.info(f"Database: {DB_CONFIG.get('dbname')}")
+                logging.info(f"Host: {DB_CONFIG.get('host')}")
                 return
             except Exception as e:
-                print(f"Error connecting to database (attempt {attempt + 1}/{self.max_retries}): {e}")
+                logging.info(f"Error connecting to database (attempt {attempt + 1}/{self.max_retries}): {e}")
                 if attempt < self.max_retries - 1:
                     time.sleep(self.retry_delay)
                 else:
-                    print("Failed to connect to PostgreSQL after multiple attempts")
+                    logging.info("Failed to connect to PostgreSQL after multiple attempts")
                     raise e
 
     def init_db(self):
@@ -57,9 +58,9 @@ class Database:
                 """)
 
                 self.connection.commit()
-                print("Database initialized successfully")
+                logging.info("Database initialized successfully")
         except Exception as e:
-            print(f"Error initializing database: {e}")
+            logging.info(f"Error initializing database: {e}")
 
     def add_user(self, telegram_id: int, username: str, first_name: str, last_name: str = None):
         try:
@@ -72,7 +73,7 @@ class Database:
                 """, (telegram_id, username, first_name, last_name))
                 self.connection.commit()
         except Exception as e:
-            print(f"Error adding user: {e}")
+            logging.info(f"Error adding user: {e}")
 
     def add_expense(self, telegram_id: int, amount: float, category: Category, description: str, comment: str = None):
         try:
@@ -91,7 +92,7 @@ class Database:
                     return True
             return False
         except Exception as e:
-            print(f"Error adding expense: {e}")
+            logging.info(f"Error adding expense: {e}")
             return False
 
     def get_user_expenses_by_category_weekly(self, telegram_id: int):
@@ -112,7 +113,7 @@ class Database:
                 """, (telegram_id,))
                 return cursor.fetchall()
         except Exception as e:
-            print(f"Error getting user weekly expenses: {e}")
+            logging.info(f"Error getting user weekly expenses: {e}")
             return []
 
     def get_user_expenses_by_category_all_time(self, telegram_id: int):
@@ -132,7 +133,7 @@ class Database:
                 """, (telegram_id,))
                 return cursor.fetchall()
         except Exception as e:
-            print(f"Error getting user all-time expenses: {e}")
+            logging.info(f"Error getting user all-time expenses: {e}")
             return []
 
     def get_general_statistics_weekly(self):
@@ -153,7 +154,7 @@ class Database:
                 """)
                 return cursor.fetchall()
         except Exception as e:
-            print(f"Error getting general weekly statistics: {e}")
+            logging.info(f"Error getting general weekly statistics: {e}")
             return []
 
     def get_general_statistics_all_time(self):
@@ -173,7 +174,7 @@ class Database:
                 """)
                 return cursor.fetchall()
         except Exception as e:
-            print(f"Error getting general all-time statistics: {e}")
+            logging.info(f"Error getting general all-time statistics: {e}")
             return []
 
     def get_all_expenses(self):
@@ -195,7 +196,7 @@ class Database:
                 """)
                 return cursor.fetchall()
         except Exception as e:
-            print(f"Error getting all expenses: {e}")
+            logging.info(f"Error getting all expenses: {e}")
             return []
     def get_expenses_by_date(self, telegram_id: int, target_date: str):
         """Получает расходы пользователя за конкретную дату"""
@@ -216,7 +217,7 @@ class Database:
                 """, (telegram_id, target_date))
                 return cursor.fetchall()
         except Exception as e:
-            print(f"Error getting expenses by date: {e}")
+            logging.info(f"Error getting expenses by date: {e}")
             return []
 
 # Глобальный экземпляр базы данных
